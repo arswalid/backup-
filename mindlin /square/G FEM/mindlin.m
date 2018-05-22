@@ -1,13 +1,16 @@
-% mindlin plate theoty 
+% mindlin plate theoty G FEM
 % the weak form is given by 
 % int_A(var_kappa' * C_b *kappa)dA  + int_A(var_gamma' * C_s *gamma)dA  +
 % = int_A (var_w * p)dA 
+
+
+%element stiif mat and elem mass mat is calculated once 
 
 %test
 
 clear 
 clc
-clf 
+
 
 
 E = 5.e6 ;
@@ -15,9 +18,9 @@ nu=  0.3;
 k = 5/6;
 Lx= 10;
 Ly= 10;
-thickness = Lx*0.01; 
+thickness = Lx*0.1; 
 rho  = 1;
-mode = 8;
+mode = 10;
 
 C_s = ((E*thickness*k)/(2*(1+nu))) * [1 0 ; 0 1 ];
 
@@ -25,17 +28,22 @@ C_b = ((E*thickness^3)/(12*(1-nu^2))) * [1 nu 0;nu 1 0;0 0 (1-nu)/2 ];
 
 step=1;
 % [  35 45 55 93 149 159]+1;
-dofs=[35];
+dofs=[4 8 16 32];
 numb_var = length(dofs);
-store_eigenvalues_fit=zeros(10,numb_var);
+
+num_eig = 4;  %number of eigenvalues 
+store_eigenvalues_fit=zeros(num_eig,numb_var);
 n_dofs_eig=zeros(numb_var);
-for n_elems_x = dofs
-    
-    
-    
+
+
+for n_elems_x = dofs   
 n_elems_y = n_elems_x;
 
-reduced = 1;
+
+
+
+reduced = 0;
+
 
 
 n_nodes_x = n_elems_x+1;
@@ -95,8 +103,7 @@ n_qp_domain  = 4;
 n_qp_boundary= 2;
 
 
-jac_mat = sparse(n_dofs*3, n_dofs*3);
-res_vec = sparse(n_dofs*3, n_dofs*3);
+
 vec_i_stiff=0;
 vec_j_stiff=0;
 z_stiff=0;
@@ -168,7 +175,6 @@ for i_elem_x=1:n_elems_x
                 
             end
             if reduced == 1
-                
                 for i_qp = 1
                     
                     xi                      = 0;           % element quadrature point location
@@ -209,7 +215,7 @@ for i_elem_x=1:n_elems_x
                     
                     
                     B = [Bxmat zeros(1,4) -Bmat;...
-                        Bymat  Bmat zeros(1,4)];
+                         Bymat  Bmat zeros(1,4)];
                     
                     
                     jac_e                   = jac_e + qp_wgt_domain(i_qp) * J_det *(...
@@ -295,8 +301,8 @@ vec_j_el = [ind(:,2);ind1(:,2);ind2(:,2);ind1(:,2);ind2(:,2);ind(:,2);ind2(:,2);
 z_el     = [z1';z5';z9';z4';z7';z2';z8';z3';z6'];
 
 if elem1 == 1 
- vec_i_stiff = [ vec_i_el];
-vec_j_stiff = [ vec_j_el];
+ vec_i_stiff = vec_i_el;
+vec_j_stiff =  vec_j_el;
 z_stiff=[z_el];
 else
 vec_i_stiff = [vec_i_stiff ; vec_i_el];
@@ -340,20 +346,19 @@ res_vec = sparse(vec_i_mass,vec_j_mass,z_mass,3*n_dofs,3*n_dofs);
 %  apply boundary conditions on all edge nodes
 d_indices = [...                       % dofs with constraints
     1:n_nodes_x ...                                     % bottom
-  ...n_nodes_x+1:n_nodes_x:(n_nodes_y-2)*n_nodes_x+1 ...  % left 
-   ... 2*n_nodes_x:n_nodes_x:(n_nodes_y-1)*n_nodes_x   ...  % right 
+     n_nodes_x+1:n_nodes_x:(n_nodes_y-2)*n_nodes_x+1 ...  % left 
+    2*n_nodes_x:n_nodes_x:(n_nodes_y-1)*n_nodes_x   ...  % right 
    (n_nodes_y-1)*n_nodes_x+1:n_nodes
    ];                  % top
 
-% d_indices1=[1 n_nodes_x n_nodes_x+1 n_nodes];
-
 u_indices = setdiff((1:3*n_nodes),d_indices);
-% u_indices = setdiff(u_indices,d_indices1);
 u_indices = setdiff(u_indices,n_dofs+d_indices);
-% u_indices = setdiff(u_indices,d_indices1+n_dofs);
-% u_indices = setdiff(u_indices,d_indices1+2*n_dofs);
 u_indices = setdiff(u_indices,2*n_dofs+d_indices);
 
+% d_indices1=[1 n_nodes_x n_nodes_x+1 n_nodes];
+% u_indices = setdiff(u_indices,d_indices1);
+% u_indices = setdiff(u_indices,d_indices1+n_dofs);
+% u_indices = setdiff(u_indices,d_indices1+2*n_dofs);
 % u_indices = setdiff((u_indices),[1 n_nodes_x n_nodes-n_elems_x n_nodes]);
 
 J_sub     = jac_mat(u_indices, u_indices);
@@ -362,14 +367,14 @@ r_sub     = res_vec(u_indices, u_indices);
 
 
 % solve the system of equations
-V=zeros(3*n_dofs,10);
+V=zeros(3*n_dofs,num_eig);
 
 
-[V(u_indices,:),D]=eigs(J_sub,r_sub,10,'smallestabs');
+[V(u_indices,:),D]=eigs(J_sub,r_sub,num_eig,'smallestabs');
 
 
 
-D=diag(D)
+D=diag(D);
 
 D1=(E*thickness^3)/(12*(1-nu^2));
 
@@ -379,53 +384,25 @@ D(:,1)=sqrt(D) * (Lx^2/sqrt(D1/thickness));
 store_eigenvalues_fit(:,step)=D(:,1);
 step=step+1;
 
-sol=zeros(3*n_dofs,10);
+% %----------- % plot the solution ------------------------------------------------
+%  sol= V(1:n_nodes,mode);
+%     if sol(2,1) > sol(n_nodes_x+3,1) 
+%         
+%         sol(:,1)= sol(:,1) * - 1;
+%     end
+% X_vec  = sol;
+% z_vals = zeros(n_nodes_x, n_nodes_y);
+% for i_nd=1:n_nodes_y
+%     idx            = ((i_nd-1)*n_nodes_x+1:i_nd*n_nodes_x);
+%     z_vals(:,i_nd) = X_vec(idx);
+% end
+% figure(1)
+% surf(x_vals, y_vals, z_vals')
+% xlabel('x (m)')
+% ylabel('y (m)')
+% zlabel('u')
 
-sol(:,1)=V(:,1);
-sol(:,2)=V(:,2);
-sol(:,3)=V(:,3);
-sol(:,4)=V(:,4);
-sol(:,5)=V(:,5);
-sol(:,6)=V(:,6);
-sol(:,7)=V(:,7);
-sol(:,8)=V(:,8);
-sol(:,9)=V(:,9);
-sol(:,10)=V(:,10);
-
-for i = 1 : 10
-
-    if sol(2,i) > sol(n_nodes_x+3,i) 
-        
-        sol(:,i)= sol(:,i) * - 1;
-    end
-    storemax_fit(i) = max(sol(1:n_dofs,i));
-    
-end
-%-----------------------------------------------------------
-
-
-
-% solve the system of equations
-% solve the system
-dX_vec  = sol(1:n_nodes,mode);
-X_vec=dX_vec ;
-
-
-
-% plot the solution
-% plot density
-z_vals = zeros(n_nodes_x, n_nodes_y);
-for i_nd=1:n_nodes_y
-    idx            = ((i_nd-1)*n_nodes_x+1:i_nd*n_nodes_x);
-    z_vals(:,i_nd) = X_vec(idx);
-end
-figure(1)
-surf(x_vals, y_vals, z_vals')
-xlabel('x (m)')
-ylabel('y (m)')
-zlabel('u')
-
-clearvars -except store_eigenvalues_fit step E nu k Lx Ly thickness mode C_s C_b  n_dofs_eig rho thickness dofs 
+clearvars -except store_eigenvalues_fit step E nu k Lx Ly thickness mode C_s C_b  n_dofs_eig rho thickness dofs num_eig
 end
 
 store_eigenvalues_fit

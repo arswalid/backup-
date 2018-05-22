@@ -1,23 +1,21 @@
 
 clear
 clc
-clf
+
 column=1;
 %  25 35 45 55
-for n_elems_x_o = [190]-1 %odd number  bigger or equal to 3
-
-format long 
+for n_elems_x_o = [4 8 16 32]-1 %odd number  bigger or equal to 3
 E1=5.e6;
 E2=5.e6;
 % these value are for a compression shock at 0.
 
-reduced =0;
+reduced =1;
 
 nu=  0.3;
 k = 5/6;
 Lx= 10;
 Ly= 10;
-thickness = Lx*0.1; 
+thickness = Lx*0.01; 
 
 rho=1;
 
@@ -75,10 +73,10 @@ end
 
 
 % four point Gauss-quadrature rule for 2D domain integration
-qp_loc_domain  = ...
+qp_loc_domain_full  = ...
     [-1/sqrt(3)  1/sqrt(3)  -1/sqrt(3)  1/sqrt(3); ...  % xi location
     -1/sqrt(3)  -1/sqrt(3)  1/sqrt(3)  1/sqrt(3)];     % eta location
-qp_wgt_domain  = [1 1 1 1];
+qp_wgt_domain_full  = [1 1 1 1];
 % two point Gauss-quadrature rule for bottom edge of elem
 qp_loc_bottom  = ...
     [-1/sqrt(3)  1/sqrt(3); ...  % xi location
@@ -133,11 +131,6 @@ n_qp_domain  = 4;
 n_qp_boundary= 2;
 
 
-
-% lag_bc1          = zeros(n_dofs+1, n_dofs+1);
-% lag_bc2          = zeros(n_dofs+1, n_dofs+1);
-% lag_bc3          = zeros(n_dofs+1, n_dofs+1);
-% lag_bc4          = zeros(n_dofs+1, n_dofs+1);
 lag     = sparse(n_dofs*3, 3*n_dofs);
 
 X_vec   = zeros(3*n_dofs, 1);
@@ -165,92 +158,12 @@ for i_elem_x=1:n_elems_x+1
         x_vec                   = x_loc(indices,1);
         y_vec                   = x_loc(indices,2);
         if i_elem_x == n_elems_x/2
-            
-            % zero all matrices before evaluation
-            n_elem_dofs     = max(size(indices));
-            jac_e           = zeros(n_elem_dofs*3,n_elem_dofs*3);
-       
-            res_e           = zeros(n_elem_dofs*3,n_elem_dofs*3);
-            
-            
-            for i_qp = 1:n_qp_domain
-                
-                xi                      = qp_loc_domainhalf1(1,i_qp);           % element quadrature point location
-                eta                     = qp_loc_domainhalf1(2,i_qp);           % element quadrature point location
-                
-                % solution and derivative quantities at quadrature
-                % point
-[w , dw_dx , dw_dy , betax , dbetax_dx , dbetax_dy , betay ...
-         , dbetay_dx , dbetay_dy , Bmat, Bxmat, Bymat, J_det] = ...
-quadrature_pt_quantities(xi, eta, x_vec, y_vec, w_vec,tetax,tetay, 0);
-
-            A = [ zeros(1,4) zeros(1,4) -Bxmat;...
-                  zeros(1,4) Bymat   zeros(1,4);...
-                  zeros(1,4) Bxmat      -Bymat];
-             
-             
-            D = [Bmat zeros(1,4) zeros(1,4)];
-                
-                % calculate the stiff  and mass matrix
-            res_e                   = res_e + qp_wgt_domain1(i_qp) * J_det *(...
-                       ...                   % -dphi/dx du/dx
-                      ...                   % -dphi/dy du/dy
-                + D'  * D);                              % +phi f 
-            
-            jac_e                   = jac_e + qp_wgt_domain1(i_qp) * J_det *(...
-                A' * C_b1 * A       ...                   
-              );       
-            end
-            
-            
-        if reduced == 1
-        
-                                for i_qp = 1
-                
-                xi                      = 0;           % element quadrature point location
-                eta                     = 0;           % element quadrature point location
-                
-                % solution and derivative quantities at quadrature
-                % point
-[w , dw_dx , dw_dy , betax , dbetax_dx , dbetax_dy , betay ...
-         , dbetay_dx , dbetay_dy , Bmat, Bxmat, Bymat, J_det] = ...
-quadrature_pt_quantities(xi, eta, x_vec, y_vec, w_vec,tetax,tetay, 0);
-
-  
-              
-            B = [Bxmat zeros(1,4) -Bmat;...
-                 Bymat  Bmat zeros(1,4)];
-
-            jac_e                   = jac_e + 4 * J_det *(...
-                     ...                   
-               B' * C_s1 * B );       
-                        end
-        
-        else
-        
-        for i_qp = 1:n_qp_domain
-            
-            xi                      = qp_loc_domainhalf1(1,i_qp);           % element quadrature point location
-            eta                     = qp_loc_domainhalf1(2,i_qp);           % element quadrature point location
-                
-                % solution and derivative quantities at quadrature
-                % point
-[w , dw_dx , dw_dy , betax , dbetax_dx , dbetax_dy , betay ...
-         , dbetay_dx , dbetay_dy , Bmat, Bxmat, Bymat, J_det] = ...
-quadrature_pt_quantities(xi, eta, x_vec, y_vec, w_vec,tetax,tetay, 0);
-
-  
-              
-            B = [Bxmat zeros(1,4) -Bmat;...
-                 Bymat  Bmat zeros(1,4)];
-
-            jac_e                   = jac_e + qp_wgt_domain1(i_qp) * J_det *(...
-                     ...                   
-               B' * C_s1 * B );       
-                                        end
-        end
-            
-                    
+           
+            C_b = C_b1;
+            C_s = C_s1;
+        qp_loc_domain = qp_loc_domainhalf1 ; 
+        qp_wgt_domain = qp_wgt_domain1;
+            [jac_e,res_e,n_elem_dofs] = stiif_mat(indices,x_vec, y_vec, w_vec,tetax,tetay,reduced,n_qp_domain,qp_loc_domain,qp_wgt_domain,C_b,C_s  );        
 for i=1:4
     ind((i-1)*4+1:i*4,1) = indices;
     ind((i-1)*4+1:i*4,2) = indices(i);
@@ -260,65 +173,7 @@ ind1=ind+n_dofs;
 ind2=ind+2*n_dofs;
 
 
-z1=zeros(1,16);
-z2=zeros(1,16);
-z3=zeros(1,16);
-z4=zeros(1,16);
-z5=zeros(1,16);
-z6=zeros(1,16);
-z7=zeros(1,16);
-z8=zeros(1,16);
-z9=zeros(1,16);
-
-o=1;
-p=1;
-q=1;
-col = 0;
-for j =1:12
-       if j == 5 || j == 9
-            o=1;
-            p=1;
-            q=1;
-        end 
-    for i =1:12
-        if i>=1 && i<=4 && j>=1 && j<=4
-            z1(o+col) = jac_e(i,j);
-            o=o+1;
-        elseif i>=5 && i<=8 && j>=1 && j<=4
-            z2(p+col) = jac_e(i,j);
-            p=p+1; 
-        elseif i>=9 && i<=12 && j>=1 && j<=4
-            z3(q+col) = jac_e(i,j);
-            q=q+1;
-        elseif i>=1 && i<=4 && j>=5 && j<=8
-            z4(o+col) = jac_e(i,j);
-            o=o+1;
-        elseif i>=5 && i<=8 && j>=5 && j<=8
-            z5(p+col) = jac_e(i,j);
-            p=p+1;
-        elseif i>=9 && i<=12 && j>=5 && j<=8
-            z6(q+col) = jac_e(i,j);
-            q=q+1;
-        elseif i>=1 && i<=4 && j>=9 && j<=12
-            z7(o+col) = jac_e(i,j);
-            o=o+1;
-        elseif i>=5 && i<=8 && j>=9 && j<=12
-            z8(p+col) = jac_e(i,j);
-            p=p+1;
-        elseif i>=9 && i<=12 && j>=9 && j<=12
-            z9(q+col) = jac_e(i,j);
-            q=q+1;
-        end
- 
-    end
-
-end
-clear o p q 
-
-
-vec_i_el = [ind(:,1);ind1(:,1);ind2(:,1);ind(:,1);ind(:,1);ind1(:,1);ind1(:,1);ind2(:,1);ind2(:,1)];
-vec_j_el = [ind(:,2);ind1(:,2);ind2(:,2);ind1(:,2);ind2(:,2);ind(:,2);ind2(:,2);ind(:,2);ind1(:,2)];
-z_el     = [z1';z5';z9';z4';z7';z2';z8';z3';z6'];
+[vec_i_el,vec_j_el,z_el] = mat_to_vector(jac_e,ind,ind1,ind2 ); 
 
 if elem1 == 1 
 vec_i_stiff = [ vec_i_el];
@@ -355,6 +210,8 @@ end
    end
    clear z vec_i vec_j
 
+   
+   
             %lagrange
             lag1           = zeros(n_elem_dofs,1);
             lag2           = zeros(n_elem_dofs,1);
@@ -387,87 +244,15 @@ quadrature_pt_quantities(xi, eta, x_vec, y_vec, w_vec,tetax,tetay, 2);
             lag             (3*n_dofs    +lag_ind_elem1+2,   2*n_dofs+indices)=lag3';
             
             lag_ind_elem1=lag_ind_elem1+3;
-        elseif i_elem_x == n_elems_x/2+2
             
+            
+        elseif i_elem_x == n_elems_x/2+2     
             C_b = C_b2;
             C_s = C_s2;
+        qp_loc_domain = qp_loc_domainhalf2 ; 
+        qp_wgt_domain = qp_wgt_domain2;
+            [jac_e,res_e,n_elem_dofs] = stiif_mat(indices,x_vec, y_vec, w_vec,tetax,tetay,reduced,n_qp_domain,qp_loc_domain,qp_wgt_domain,C_b,C_s  ); 
             
-            n_elem_dofs     = max(size(indices));
-            jac_e           = zeros(n_elem_dofs*3,n_elem_dofs*3);
-            res_e           = zeros(n_elem_dofs*3,n_elem_dofs*3);
-            for i_qp = 1:n_qp_domain
-                
-                xi                      = qp_loc_domainhalf2(1,i_qp);           % element quadrature point location
-                eta                     = qp_loc_domainhalf2(2,i_qp);           % element quadrature point location
-                
-                         % solution and derivative quantities at quadrature
-                % point
-[w , dw_dx , dw_dy , betax , dbetax_dx , dbetax_dy , betay ...
-         , dbetay_dx , dbetay_dy , Bmat, Bxmat, Bymat, J_det] = ...
-quadrature_pt_quantities(xi, eta, x_vec, y_vec, w_vec,tetax,tetay, 0);
-
-            A = [ zeros(1,4) zeros(1,4) -Bxmat;...
-                  zeros(1,4) Bymat   zeros(1,4);...
-                  zeros(1,4) Bxmat      -Bymat];
-             
-            D = [Bmat zeros(1,4) zeros(1,4)];
-                
-                % calculate the stiff  and mass matrix
-            res_e                   = res_e + qp_wgt_domain2(i_qp) * J_det *(...
-                       ...                   % -dphi/dx du/dx
-                      ...                   % -dphi/dy du/dy
-                + D'  * D);                              % +phi f 
-            
-            jac_e                   = jac_e + qp_wgt_domain2(i_qp) * J_det *(...
-                A' * C_b * A       ...                   
-               );       
-            end
-        if reduced == 1
-        
-                                for i_qp = 1
-                
-                xi                      = 0;           % element quadrature point location
-                eta                     = 0;           % element quadrature point location
-                
-                % solution and derivative quantities at quadrature
-                % point
-[w , dw_dx , dw_dy , betax , dbetax_dx , dbetax_dy , betay ...
-         , dbetay_dx , dbetay_dy , Bmat, Bxmat, Bymat, J_det] = ...
-quadrature_pt_quantities(xi, eta, x_vec, y_vec, w_vec,tetax,tetay, 0);
-
-  
-              
-            B = [Bxmat zeros(1,4) -Bmat;...
-                 Bymat  Bmat zeros(1,4)];
-
-            jac_e                   = jac_e + 4 * J_det *(...
-                     ...                   
-               B' * C_s1 * B );       
-                        end
-        
-        else
-        
-        for i_qp = 1:n_qp_domain
-            
-            xi                      = qp_loc_domainhalf2(1,i_qp);           % element quadrature point location
-            eta                     = qp_loc_domainhalf2(2,i_qp);           % element quadrature point location
-                
-                % solution and derivative quantities at quadrature
-                % point
-[w , dw_dx , dw_dy , betax , dbetax_dx , dbetax_dy , betay ...
-         , dbetay_dx , dbetay_dy , Bmat, Bxmat, Bymat, J_det] = ...
-quadrature_pt_quantities(xi, eta, x_vec, y_vec, w_vec,tetax,tetay, 0);
-
-  
-              
-            B = [Bxmat zeros(1,4) -Bmat;...
-                 Bymat  Bmat zeros(1,4)];
-
-            jac_e                   = jac_e + qp_wgt_domain2(i_qp) * J_det *(...
-                     ...                   
-               B' * C_s1 * B );       
-                                        end
-        end
 for i=1:4
     ind((i-1)*4+1:i*4,1) = indices;
     ind((i-1)*4+1:i*4,2) = indices(i);
@@ -477,65 +262,7 @@ ind1=ind+n_dofs;
 ind2=ind+2*n_dofs;
 
 
-z1=zeros(1,16);
-z2=zeros(1,16);
-z3=zeros(1,16);
-z4=zeros(1,16);
-z5=zeros(1,16);
-z6=zeros(1,16);
-z7=zeros(1,16);
-z8=zeros(1,16);
-z9=zeros(1,16);
-
-o=1;
-p=1;
-q=1;
-col = 0;
-for j =1:12
-       if j == 5 || j == 9
-            o=1;
-            p=1;
-            q=1;
-        end 
-    for i =1:12
-        if i>=1 && i<=4 && j>=1 && j<=4
-            z1(o+col) = jac_e(i,j);
-            o=o+1;
-        elseif i>=5 && i<=8 && j>=1 && j<=4
-            z2(p+col) = jac_e(i,j);
-            p=p+1; 
-        elseif i>=9 && i<=12 && j>=1 && j<=4
-            z3(q+col) = jac_e(i,j);
-            q=q+1;
-        elseif i>=1 && i<=4 && j>=5 && j<=8
-            z4(o+col) = jac_e(i,j);
-            o=o+1;
-        elseif i>=5 && i<=8 && j>=5 && j<=8
-            z5(p+col) = jac_e(i,j);
-            p=p+1;
-        elseif i>=9 && i<=12 && j>=5 && j<=8
-            z6(q+col) = jac_e(i,j);
-            q=q+1;
-        elseif i>=1 && i<=4 && j>=9 && j<=12
-            z7(o+col) = jac_e(i,j);
-            o=o+1;
-        elseif i>=5 && i<=8 && j>=9 && j<=12
-            z8(p+col) = jac_e(i,j);
-            p=p+1;
-        elseif i>=9 && i<=12 && j>=9 && j<=12
-            z9(q+col) = jac_e(i,j);
-            q=q+1;
-        end
- 
-    end
-
-end
-clear o p q 
-
-
-vec_i_el = [ind(:,1);ind1(:,1);ind2(:,1);ind(:,1);ind(:,1);ind1(:,1);ind1(:,1);ind2(:,1);ind2(:,1)];
-vec_j_el = [ind(:,2);ind1(:,2);ind2(:,2);ind1(:,2);ind2(:,2);ind(:,2);ind2(:,2);ind(:,2);ind1(:,2)];
-z_el     = [z1';z5';z9';z4';z7';z2';z8';z3';z6'];
+[vec_i_el,vec_j_el,z_el] = mat_to_vector(jac_e,ind,ind1,ind2 ); 
 
 if elem1 == 1 
  vec_i_stiff = [ vec_i_el];
@@ -612,88 +339,10 @@ quadrature_pt_quantities(xi, eta, x_vec, y_vec, w_vec,tetax,tetay, 2);
             
         else
             
-  % zero all matrices before evaluation
-        n_elem_dofs     = max(size(indices));
-        jac_e           = zeros(n_elem_dofs*3, n_elem_dofs*3);
-        res_e           = zeros(n_elem_dofs*3,n_elem_dofs*3);
         
-        for i_qp = 1:n_qp_domain
-            
-            xi                      = qp_loc_domain(1,i_qp);           % element quadrature point location
-            eta                     = qp_loc_domain(2,i_qp);           % element quadrature point location
-            
-            % solution and derivative quantities at quadrature
-            % point
-[w , dw_dx , dw_dy , betax , dbetax_dx , dbetax_dy , betay ...
-         , dbetay_dx , dbetay_dy , Bmat, Bxmat, Bymat, J_det] = ...
-quadrature_pt_quantities(xi, eta, x_vec, y_vec, w_vec,tetax,tetay, 0);
-            
-            % calculate the residual and Jacobians
-            
-            A = [ zeros(1,4) zeros(1,4) -Bxmat;...
-                  zeros(1,4) Bymat   zeros(1,4);...
-                  zeros(1,4) Bxmat      -Bymat];
-
-             
-            D = [Bmat zeros(1,4) zeros(1,4)];
-            
-            
-            res_e                   = res_e + qp_wgt_domain(i_qp) * J_det *(...
-                       ...                   % -dphi/dx du/dx
-                      ...                   % -dphi/dy du/dy
-                + D'  * D);                              % +phi f 
-            
-            jac_e                   = jac_e + qp_wgt_domain(i_qp) * J_det *(...
-                A' * C_b * A       ...                   
-                );                         
-        end
-        
-        if reduced == 1
-        
-                                for i_qp = 1
-                
-                xi                      = 0;           % element quadrature point location
-                eta                     = 0;           % element quadrature point location
-                
-                % solution and derivative quantities at quadrature
-                % point
-[w , dw_dx , dw_dy , betax , dbetax_dx , dbetax_dy , betay ...
-         , dbetay_dx , dbetay_dy , Bmat, Bxmat, Bymat, J_det] = ...
-quadrature_pt_quantities(xi, eta, x_vec, y_vec, w_vec,tetax,tetay, 0);
-
-  
-              
-            B = [Bxmat zeros(1,4) -Bmat;...
-                 Bymat  Bmat zeros(1,4)];
-
-            jac_e                   = jac_e + 4 * J_det *(...
-                     ...                   
-               B' * C_s1 * B );       
-                        end
-        
-        else
-        
-        for i_qp = 1:n_qp_domain
-            
-            xi                      = qp_loc_domain(1,i_qp);           % element quadrature point location
-            eta                     = qp_loc_domain(2,i_qp);           % element quadrature point location
-                
-                % solution and derivative quantities at quadrature
-                % point
-[w , dw_dx , dw_dy , betax , dbetax_dx , dbetax_dy , betay ...
-         , dbetay_dx , dbetay_dy , Bmat, Bxmat, Bymat, J_det] = ...
-quadrature_pt_quantities(xi, eta, x_vec, y_vec, w_vec,tetax,tetay, 0);
-
-  
-              
-            B = [Bxmat zeros(1,4) -Bmat;...
-                 Bymat  Bmat zeros(1,4)];
-
-            jac_e                   = jac_e + qp_wgt_domain(i_qp) * J_det *(...
-                     ...                   
-               B' * C_s1 * B );       
-                                        end
-        end
+        qp_loc_domain = qp_loc_domain_full ; 
+        qp_wgt_domain = qp_wgt_domain_full;
+            [jac_e,res_e,n_elem_dofs] = stiif_mat(indices,x_vec, y_vec, w_vec,tetax,tetay,reduced,n_qp_domain,qp_loc_domain,qp_wgt_domain,C_b,C_s  ); 
         
 for i=1:4
     ind((i-1)*4+1:i*4,1) = indices;
@@ -703,66 +352,7 @@ end
 ind1=ind+n_dofs;
 ind2=ind+2*n_dofs;
 
-
-z1=zeros(1,16);
-z2=zeros(1,16);
-z3=zeros(1,16);
-z4=zeros(1,16);
-z5=zeros(1,16);
-z6=zeros(1,16);
-z7=zeros(1,16);
-z8=zeros(1,16);
-z9=zeros(1,16);
-
-o=1;
-p=1;
-q=1;
-col = 0;
-for j =1:12
-       if j == 5 || j == 9
-            o=1;
-            p=1;
-            q=1;
-        end 
-    for i =1:12
-        if i>=1 && i<=4 && j>=1 && j<=4
-            z1(o+col) = jac_e(i,j);
-            o=o+1;
-        elseif i>=5 && i<=8 && j>=1 && j<=4
-            z2(p+col) = jac_e(i,j);
-            p=p+1; 
-        elseif i>=9 && i<=12 && j>=1 && j<=4
-            z3(q+col) = jac_e(i,j);
-            q=q+1;
-        elseif i>=1 && i<=4 && j>=5 && j<=8
-            z4(o+col) = jac_e(i,j);
-            o=o+1;
-        elseif i>=5 && i<=8 && j>=5 && j<=8
-            z5(p+col) = jac_e(i,j);
-            p=p+1;
-        elseif i>=9 && i<=12 && j>=5 && j<=8
-            z6(q+col) = jac_e(i,j);
-            q=q+1;
-        elseif i>=1 && i<=4 && j>=9 && j<=12
-            z7(o+col) = jac_e(i,j);
-            o=o+1;
-        elseif i>=5 && i<=8 && j>=9 && j<=12
-            z8(p+col) = jac_e(i,j);
-            p=p+1;
-        elseif i>=9 && i<=12 && j>=9 && j<=12
-            z9(q+col) = jac_e(i,j);
-            q=q+1;
-        end
- 
-    end
-
-end
-clear o p q 
-
-
-vec_i_el = [ind(:,1);ind1(:,1);ind2(:,1);ind(:,1);ind(:,1);ind1(:,1);ind1(:,1);ind2(:,1);ind2(:,1)];
-vec_j_el = [ind(:,2);ind1(:,2);ind2(:,2);ind1(:,2);ind2(:,2);ind(:,2);ind2(:,2);ind(:,2);ind1(:,2)];
-z_el     = [z1';z5';z9';z4';z7';z2';z8';z3';z6'];
+[vec_i_el,vec_j_el,z_el] = mat_to_vector(jac_e,ind,ind1,ind2 ); 
 
 if elem1 == 1 
  vec_i_stiff = [ vec_i_el];
@@ -807,7 +397,7 @@ end
 end
 
 jac_mat = sparse(vec_i_stiff,vec_j_stiff,z_stiff,3*n_dofs,3*n_dofs);
-res_vec = sparse(vec_i_mass,vec_j_mass,z_mass,3*n_dofs,3*n_dofs);
+res_vec = sparse(vec_i_mass ,vec_j_mass ,z_mass ,3*n_dofs,3*n_dofs);
 
 
 sizeofmatrices=3*n_dofs+lag_ind_elem1-1;
@@ -816,9 +406,9 @@ res_vec(sizeofmatrices,sizeofmatrices)=0;
 jac_mat=jac_mat+lag;
 
 
-jac_mat = jac_mat + speye(sizeofmatrices,sizeofmatrices)*1.e-15;
+jac_mat = jac_mat + speye(sizeofmatrices,sizeofmatrices)*1.e-15; % to have better conditioning 
 
-% res_vec = res_vec + speye(sizeofmatrices,sizeofmatrices)*1.e-20;
+
 
 
 
@@ -831,14 +421,13 @@ d_indices = [...                       % dofs with constraints
  2*n_nodes_x:n_nodes_x:(n_nodes_y-1)*n_nodes_x   ...  % right
    (n_nodes_y-1)*n_nodes_x+1:n_nodes...
    
-   
-   
-
    ... 1 n_nodes_x n_nodes_x*n_nodes_y n_nodes_x*n_nodes_y-n_nodes_x+1 ...
     ];                  % top
 
 
 % d_indices=[1 n_nodes_x n_nodes_x+1 n_nodes];
+
+
 
 u_indices = setdiff((1:sizeofmatrices),d_indices);
 u_indices = setdiff((u_indices),d_indices+n_dofs);
@@ -859,30 +448,45 @@ V=zeros(sizeofmatrices,4);
 [V(u_indices,:),D]=eigs(J_sub,r_sub,4,0.1);
 
 
-
-% [V,D]=eig(J_sub,r_sub);
-
 D=diag(D);
-
-D(:,2)=1:length(D) ;
-D =sortrows(D,1);
-
-
-% D = D(1:4,:);
 
 
 D1=(E1*thickness^3)/(12*(1-nu^2));
 
 D(:,1)=sqrt(D(:,1)) * (Lx^2/sqrt(D1/thickness));
 
- store_eigenvalues(:,column)=D(:,1)
+store_eigenvalues(:,column)=D(:,1)
 column = column +1; 
 
-if n_elems_x_o  ~= 93
+
+
+
+
+
+
+
 
 clearvars -except store_eigenvalues column n_dofs_eig reduced  sizeofmatrices V D 
+
 end
+if column == 6 
+%_________________________  error calculation _________
+line1 = abs(store_eigenvalues(1,1:4)-store_eigenvalues(1,5));
+line2 = abs(store_eigenvalues(2,1:4)-store_eigenvalues(2,5));
+line3 = abs(store_eigenvalues(3,1:4)-store_eigenvalues(3,5));
+line4 = abs(store_eigenvalues(4,1:4)-store_eigenvalues(4,5));
+
+%_________________________ text file generation _______
+mat = [(1/sqrt(n_dofs_eig))' line1' line2' line3' line4'];
+
+fileId = fopen('text_file_lagrange.txt','w');
+fprintf (fileId, '%6s %12s %12s %12s %12s\r\n','x','omega1','omega2','omega3','omega4');
+fprintf (fileId, '%12.8f %12.8f %12.8f %12.8f %12.8f\r\n',mat);
+fclose(fileId); 
+%__________________________________________________________________
+
 end
+
 %  disp_dof = n_dofs;
 % 
 % n_dofs=(n_dofs_eig(1:4)).^2;
